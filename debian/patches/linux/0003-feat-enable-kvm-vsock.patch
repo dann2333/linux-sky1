@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GitHub Copilot <copilot@local>
+Date: Sat, 28 Feb 2026 00:00:00 +0000
+Subject: [PATCH] feat: enable KVM/Cuttlefish vsock host config
+
+---
+ src/arch/arm64/configs/radxa.config | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/arch/arm64/configs/radxa.config b/src/arch/arm64/configs/radxa.config
+index f5bca1bdaf69..0123456789ab 100644
+--- a/src/arch/arm64/configs/radxa.config
++++ b/src/arch/arm64/configs/radxa.config
+@@ -378,6 +378,7 @@ CONFIG_BTRFS_FS_POSIX_ACL=y
+ # Enable KVM
+ CONFIG_VIRTUALIZATION=y
+ CONFIG_KVM=y
++CONFIG_KVM_ARM_HOST=y
+ 
+ # Support MISC binaries
+ CONFIG_BINFMT_MISC=m
+@@ -471,6 +472,11 @@ CONFIG_LEDS_TRIGGER_PATTERN=m
+ CONFIG_LEDS_TRIGGER_AUDIO=m
+ 
+ # Add vhost support
++CONFIG_VSOCKETS=m
++CONFIG_VSOCKETS_DIAG=m
++CONFIG_VIRTIO=y
++CONFIG_VIRTIO_VSOCKETS=m
++CONFIG_VHOST=m
+ CONFIG_VDPA=m
+ CONFIG_VHOST_NET=m
+ CONFIG_VHOST_SCSI=m
+-- 
+2.47.1
