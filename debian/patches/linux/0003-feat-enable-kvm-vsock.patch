@@ -11,14 +11,7 @@ diff --git a/src/arch/arm64/configs/radxa.config b/src/arch/arm64/configs/radxa.
 index f5bca1bdaf69..0123456789ab 100644
 --- a/src/arch/arm64/configs/radxa.config
 +++ b/src/arch/arm64/configs/radxa.config
-@@ -378,6 +378,7 @@ CONFIG_BTRFS_FS_POSIX_ACL=y
- # Enable KVM
- CONFIG_VIRTUALIZATION=y
- CONFIG_KVM=y
- 
- # Support MISC binaries
- CONFIG_BINFMT_MISC=m
-@@ -471,6 +472,11 @@ CONFIG_LEDS_TRIGGER_PATTERN=m
+@@ -471,6 +471,12 @@ CONFIG_LEDS_TRIGGER_PATTERN=m
  CONFIG_LEDS_TRIGGER_AUDIO=m
  
  # Add vhost support
