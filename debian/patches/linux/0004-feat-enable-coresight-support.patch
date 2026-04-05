@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GitHub Copilot <copilot@local>
+Date: Sat, 05 Apr 2026 00:00:00 +0000
+Subject: [PATCH] feat: enable CoreSight tracing support
+
+Enable all CONFIG_CORESIGHT related kernel config options for hardware
+tracing support on Sky1 (Orion O6) platform.
+
+---
+ src/arch/arm64/configs/radxa.config | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/src/arch/arm64/configs/radxa.config b/src/arch/arm64/configs/radxa.config
+index 0123456789ab..abcdef012345 100644
+--- a/src/arch/arm64/configs/radxa.config
++++ b/src/arch/arm64/configs/radxa.config
+@@ -1080,3 +1080,25 @@ CONFIG_DMABUF_HEAPS=y
+ CONFIG_DMABUF_HEAPS_CMA=y
+ CONFIG_DMABUF_HEAPS_SYSTEM=y
+ CONFIG_UDMABUF=y
++
++# CoreSight Tracing Support
++CONFIG_CORESIGHT=y
++CONFIG_CORESIGHT_LINKS_AND_SINKS=y
++CONFIG_CORESIGHT_LINK_AND_SINK_TMC=y
++CONFIG_CORESIGHT_CATU=y
++CONFIG_CORESIGHT_SINK_TPIU=y
++CONFIG_CORESIGHT_SINK_ETBV10=y
++CONFIG_CORESIGHT_SOURCE_ETM4X=y
++CONFIG_ETM4X_IMPDEF_FEATURE=y
++CONFIG_CORESIGHT_STM=y
++CONFIG_CORESIGHT_CPU_DEBUG=y
++CONFIG_CORESIGHT_CPU_DEBUG_DEFAULT_ON=y
++CONFIG_CORESIGHT_CTI=y
++CONFIG_CORESIGHT_CTI_INTEGRATION_REGS=y
++CONFIG_CORESIGHT_TRBE=y
++CONFIG_CORESIGHT_TPDM=y
++CONFIG_CORESIGHT_TPDA=y
++CONFIG_CORESIGHT_DUMMY=y
++
++# ARM CoreSight Architecture PMU
++CONFIG_ARM_CORESIGHT_PMU_ARCH_SYSTEM_PMU=y
+-- 
+2.47.1
