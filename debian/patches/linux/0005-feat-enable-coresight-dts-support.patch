@@ -12,7 +12,7 @@ CoreSight trace components in the device tree.
  1 file changed, 3 insertions(+)
 
 diff --git a/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts b/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts
-index 000000000000..111111111111 100644
+index 0123456789ab..abcdef012345 100644
 --- a/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts
 +++ b/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts
 @@ -7,6 +7,9 @@
