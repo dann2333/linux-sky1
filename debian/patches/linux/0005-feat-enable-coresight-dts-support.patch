@@ -3,24 +3,23 @@ From: GitHub Copilot <copilot@local>
 Date: Sat, 05 Apr 2026 00:00:00 +0000
 Subject: [PATCH] feat: enable CoreSight DTS support for Radxa Orion O6
 
-Define SKY1_CORESIGHT_SUPPORT and SKY1_CORESIGHT_TRBE_SUPPORT
-preprocessor macros in the Radxa Orion O6 board DTS file to enable
-CoreSight trace components in the device tree.
+Define the SKY1_CORESIGHT_SUPPORT preprocessor macro in the
+Radxa Orion O6 board DTS file to enable the platform CoreSight
+trace topology without forcing the TRBE path.
 
 ---
- src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts | 3 +++
- 1 file changed, 3 insertions(+)
+ src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts | 2 ++
+ 1 file changed, 2 insertions(+)
 
 diff --git a/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts b/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts
 index 0123456789ab..abcdef012345 100644
 --- a/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts
 +++ b/src/arch/arm64/boot/dts/cix/sky1-orion-o6.dts
-@@ -7,6 +7,9 @@
+@@ -7,6 +7,8 @@
  
  /dts-v1/;
  
 +#define SKY1_CORESIGHT_SUPPORT
-+#define SKY1_CORESIGHT_TRBE_SUPPORT
 +
  #include "sky1.dtsi"
  
