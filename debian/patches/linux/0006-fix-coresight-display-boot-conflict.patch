@@ -10,28 +10,16 @@ binary. This changes boot timing enough to expose pre-existing races in
 multiple display drivers (trilin DP bus timeout 0x51, orion VOP deadlock),
 because these drivers rely on implicit boot timing for power sequencing.
 
-Fix with two complementary approaches:
-
-1. Make PID_IN_CONTEXTIDR a runtime-toggled feature using an atomic
-   variable (contextidr_tracing_active). The write_sysreg+ISB in
-   contextidr_thread_switch() is skipped unless a CoreSight ETM trace
-   session is actively running. The ETM4x driver increments the counter
-   in etm4_enable() and decrements in etm4_disable(). This eliminates
-   the context-switch overhead during boot while preserving full
-   PID-in-CONTEXTIDR functionality during tracing. The atomic check is
-   guarded by IS_ENABLED(CONFIG_CORESIGHT_SOURCE_ETM4X) so that
-   PID_IN_CONTEXTIDR retains its original always-on behavior when
-   enabled without ETM4X (e.g. for external trace analyzers).
-
-2. Enable the DP driver's runtime PM infrastructure that was already
-   present but commented out, so that DP hardware access is properly
-   power-sequenced regardless of boot timing:
-   a. Uncomment pm_runtime_enable/get_sync in trilin_dp_core_power_init()
-      and pm_runtime_put_sync/disable in trilin_dp_core_power_deinit().
-   b. Enable device_link from DP (consumer) to DPU (supplier) in
-      trilin_dptx_cix_bind() so pm_runtime_get_sync() propagates to the
-      DPU, ensuring SKY1_PD_DPU2 is active before any DP register access.
-   c. Add runtime PM callbacks and SET_RUNTIME_PM_OPS.
+Make PID_IN_CONTEXTIDR a runtime-toggled feature using an atomic
+variable (contextidr_tracing_active). The write_sysreg+ISB in
+contextidr_thread_switch() is skipped unless a CoreSight ETM trace
+session is actively running. The ETM4x driver increments the counter
+in etm4_enable() and decrements in etm4_disable(). This eliminates
+the context-switch overhead during boot while preserving full
+PID-in-CONTEXTIDR functionality during tracing. The atomic check is
+guarded by IS_ENABLED(CONFIG_CORESIGHT_SOURCE_ETM4X) so that
+PID_IN_CONTEXTIDR retains its original always-on behavior when
+enabled without ETM4X (e.g. for external trace analyzers).
 
 No CoreSight functionality is affected - PID_IN_CONTEXTIDR, context ID
 tracing, and all ETE/TRBE features remain fully enabled during tracing.
@@ -39,10 +27,8 @@ tracing, and all ETE/TRBE features remain fully enabled during tracing.
 ---
  src/arch/arm64/include/asm/mmu_context.h                | 11 +++++++++++
  src/arch/arm64/kernel/process.c                         | 12 ++++++++++++
- src/drivers/gpu/drm/cix/dptx/trilin_dptx.c             |  8 ++++----
- src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c         | 16 +++++++++++++---
  src/drivers/hwtracing/coresight/coresight-etm4x-core.c |  8 +++++++-
- 5 files changed, 47 insertions(+), 8 deletions(-)
+ 3 files changed, 30 insertions(+), 1 deletion(-)
 
 diff --git a/src/arch/arm64/include/asm/mmu_context.h b/src/arch/arm64/include/asm/mmu_context.h
 index 000000000001..000000000002 100644
@@ -132,70 +118,5 @@ index 000000000005..000000000006 100644
  }
  
  static const struct coresight_ops_source etm4_source_ops = {
-diff --git a/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c b/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
-index 000000000007..000000000008 100644
---- a/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
-+++ b/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
-@@ -1949,9 +1949,9 @@
- {
- 	DP_DEBUG("enter");
- 
--	//power on DP_CORE_PM
--	//pm_runtime_enable(dp->dev);
--	//pm_runtime_get_sync(dp->dev);
-+	/* power on DP_CORE_PM */
-+	pm_runtime_enable(dp->dev);
-+	pm_runtime_get_sync(dp->dev);
- 
- 	if (!IS_ERR(dp->dpsub->apb_clk))
- 		clk_prepare_enable(dp->dpsub->apb_clk);
-@@ -1966,8 +1966,8 @@
- 	if (!IS_ERR(dp->dpsub->apb_clk))
- 		if (__clk_is_enabled(dp->dpsub->apb_clk))
- 			clk_disable_unprepare(dp->dpsub->apb_clk);
--	//pm_runtime_put_sync(dp->dev);
--	//pm_runtime_disable(dp->dev);
-+	pm_runtime_put_sync(dp->dev);
-+	pm_runtime_disable(dp->dev);
- 	return 0;
- }
- 
-diff --git a/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c b/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c
-index 000000000009..000000000010 100644
---- a/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c
-+++ b/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c
-@@ -173,6 +173,8 @@
- 
- 	// dpsub->link = device_link_add(drm->dev, comp, DL_FLAG_STATELESS |
- 	// 				DL_FLAG_PM_RUNTIME | DL_FLAG_RPM_ACTIVE);
-+	dpsub->link = device_link_add(comp, drm->dev, DL_FLAG_STATELESS |
-+					DL_FLAG_PM_RUNTIME | DL_FLAG_RPM_ACTIVE);
- 
- 	return 0;
- }
-@@ -378,10 +380,20 @@
- 	trilin_dp_pm_complete(dp);
- }
- 
-+static int trilin_dptx_runtime_suspend(struct device *dev)
-+{
-+	return 0;
-+}
-+
-+static int trilin_dptx_runtime_resume(struct device *dev)
-+{
-+	return 0;
-+}
-+
- static const struct dev_pm_ops trilin_dptx_pm_ops = {
- 	SET_SYSTEM_SLEEP_PM_OPS(trilin_dptx_pm_suspend, trilin_dptx_pm_resume)
--	//SET_RUNTIME_PM_OPS(trilin_dptx_runtime_suspend,
--	//		trilin_dptx_runtime_resume, NULL)
-+	SET_RUNTIME_PM_OPS(trilin_dptx_runtime_suspend,
-+			trilin_dptx_runtime_resume, NULL)
- 	.prepare = trilin_dptx_pm_prepare,
- 	.complete = trilin_dptx_pm_complete,
- 	.resume_early = trilin_dptx_pm_resume_early,
 --
 2.47.1
- 
