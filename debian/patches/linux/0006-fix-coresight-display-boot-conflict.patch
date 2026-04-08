@@ -18,7 +18,10 @@ Fix with two complementary approaches:
    session is actively running. The ETM4x driver increments the counter
    in etm4_enable() and decrements in etm4_disable(). This eliminates
    the context-switch overhead during boot while preserving full
-   PID-in-CONTEXTIDR functionality during tracing.
+   PID-in-CONTEXTIDR functionality during tracing. The atomic check is
+   guarded by IS_ENABLED(CONFIG_CORESIGHT_SOURCE_ETM4X) so that
+   PID_IN_CONTEXTIDR retains its original always-on behavior when
+   enabled without ETM4X (e.g. for external trace analyzers).
 
 2. Enable the DP driver's runtime PM infrastructure that was already
    present but commented out, so that DP hardware access is properly
@@ -34,12 +37,12 @@ No CoreSight functionality is affected - PID_IN_CONTEXTIDR, context ID
 tracing, and all ETE/TRBE features remain fully enabled during tracing.
 
 ---
- src/arch/arm64/include/asm/mmu_context.h                  | 8 ++++++++
- src/arch/arm64/kernel/process.c                           | 12 ++++++++++++
- src/drivers/gpu/drm/cix/dptx/trilin_dptx.c               |  8 ++++----
- src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c           | 16 +++++++++++++---
- src/drivers/hwtracing/coresight/coresight-etm4x-core.c   |  8 +++++++-
- 5 files changed, 44 insertions(+), 8 deletions(-)
+ src/arch/arm64/include/asm/mmu_context.h                | 11 +++++++++++
+ src/arch/arm64/kernel/process.c                         | 12 ++++++++++++
+ src/drivers/gpu/drm/cix/dptx/trilin_dptx.c             |  8 ++++----
+ src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c         | 16 +++++++++++++---
+ src/drivers/hwtracing/coresight/coresight-etm4x-core.c |  8 +++++++-
+ 5 files changed, 47 insertions(+), 8 deletions(-)
 
 diff --git a/src/arch/arm64/include/asm/mmu_context.h b/src/arch/arm64/include/asm/mmu_context.h
 index 000000000001..000000000002 100644
@@ -50,21 +53,24 @@ index 000000000001..000000000002 100644
  #include <linux/mm_types.h>
  #include <linux/pgtable.h>
 +#include <linux/atomic.h>
-
+ 
  #include <asm/cacheflush.h>
  #include <asm/cpufeature.h>
-@@ -27,11 +28,16 @@
-
+@@ -27,11 +28,19 @@
+ 
  extern bool rodata_full;
-
+ 
++#if IS_ENABLED(CONFIG_CORESIGHT_SOURCE_ETM4X)
 +extern atomic_t contextidr_tracing_active;
++#endif
 +
  static inline void contextidr_thread_switch(struct task_struct *next)
  {
  	if (!IS_ENABLED(CONFIG_PID_IN_CONTEXTIDR))
  		return;
-
-+	if (!atomic_read(&contextidr_tracing_active))
+ 
++	if (IS_ENABLED(CONFIG_CORESIGHT_SOURCE_ETM4X) &&
++	    !atomic_read(&contextidr_tracing_active))
 +		return;
 +
  	write_sysreg(task_pid_nr(next), contextidr_el1);
@@ -77,7 +83,7 @@ index 000000000003..000000000004 100644
 @@ -72,6 +72,18 @@
  void (*pm_power_off)(void);
  EXPORT_SYMBOL_GPL(pm_power_off);
-
+ 
 +#ifdef CONFIG_PID_IN_CONTEXTIDR
 +/*
 + * Controls whether contextidr_thread_switch() writes PID to CONTEXTIDR_EL1.
@@ -102,7 +108,7 @@ index 000000000005..000000000006 100644
  #include <asm/local.h>
  #include <asm/virt.h>
 +#include <asm/mmu_context.h>
-
+ 
  #include "coresight-etm4x.h"
  #include "coresight-etm-perf.h"
 @@ -881,6 +882,8 @@
@@ -111,20 +117,20 @@ index 000000000005..000000000006 100644
  		local_set(&drvdata->mode, CS_MODE_DISABLED);
 +	else
 +		atomic_inc(&contextidr_tracing_active);
-
+ 
  	return ret;
  }
 @@ -1057,8 +1060,10 @@
  		break;
  	}
-
+ 
 -	if (mode)
 +	if (mode) {
  		local_set(&drvdata->mode, CS_MODE_DISABLED);
 +		atomic_dec(&contextidr_tracing_active);
 +	}
  }
-
+ 
  static const struct coresight_ops_source etm4_source_ops = {
 diff --git a/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c b/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
 index 000000000007..000000000008 100644
@@ -133,14 +139,14 @@ index 000000000007..000000000008 100644
 @@ -1949,9 +1949,9 @@
  {
  	DP_DEBUG("enter");
-
+ 
 -	//power on DP_CORE_PM
 -	//pm_runtime_enable(dp->dev);
 -	//pm_runtime_get_sync(dp->dev);
 +	/* power on DP_CORE_PM */
 +	pm_runtime_enable(dp->dev);
 +	pm_runtime_get_sync(dp->dev);
-
+ 
  	if (!IS_ERR(dp->dpsub->apb_clk))
  		clk_prepare_enable(dp->dpsub->apb_clk);
 @@ -1966,8 +1966,8 @@
@@ -153,24 +159,24 @@ index 000000000007..000000000008 100644
 +	pm_runtime_disable(dp->dev);
  	return 0;
  }
-
+ 
 diff --git a/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c b/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c
 index 000000000009..000000000010 100644
 --- a/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c
 +++ b/src/drivers/gpu/drm/cix/dptx/trilin_dptx_cix.c
 @@ -173,6 +173,8 @@
-
+ 
  	// dpsub->link = device_link_add(drm->dev, comp, DL_FLAG_STATELESS |
  	// 				DL_FLAG_PM_RUNTIME | DL_FLAG_RPM_ACTIVE);
 +	dpsub->link = device_link_add(comp, drm->dev, DL_FLAG_STATELESS |
 +					DL_FLAG_PM_RUNTIME | DL_FLAG_RPM_ACTIVE);
-
+ 
  	return 0;
  }
 @@ -378,10 +380,20 @@
  	trilin_dp_pm_complete(dp);
  }
-
+ 
 +static int trilin_dptx_runtime_suspend(struct device *dev)
 +{
 +	return 0;
@@ -192,3 +198,4 @@ index 000000000009..000000000010 100644
  	.resume_early = trilin_dptx_pm_resume_early,
 --
 2.47.1
+ 
