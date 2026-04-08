@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: dann2333 <dann2333@users.noreply.github.com>
+Date: Tue, 08 Apr 2026 00:00:00 +0000
+Subject: [PATCH] fix: resolve CoreSight and display driver boot conflict
+
+On CIX Sky1 (Orion O6), enabling CONFIG_CORESIGHT_SOURCE_ETM4X forces
+PID_IN_CONTEXTIDR=y via Kconfig select. This adds an ISB (pipeline flush)
+to every context switch, changing boot timing enough to trigger a bus
+timeout (0x51) in the eDP panel prepare path.
+
+Additionally, the ETM4x module uses smp_call_function_single() on all 12
+CPUs during probe, which can interfere with concurrent display driver
+initialization.
+
+Fix by:
+1. Removing the PID_IN_CONTEXTIDR select from ETM4X - ETE tracing still
+   works, only automatic context ID annotation in trace data is lost.
+2. Adding MODULE_SOFTDEP to ensure display modules load before CoreSight,
+   preventing concurrent probe interference.
+
+---
+ src/drivers/hwtracing/coresight/Kconfig              | 1 -
+ src/drivers/hwtracing/coresight/coresight-etm4x-core.c | 1 +
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/hwtracing/coresight/Kconfig b/src/drivers/hwtracing/coresight/Kconfig
+index 000000000001..000000000002 100644
+--- a/src/drivers/hwtracing/coresight/Kconfig
++++ b/src/drivers/hwtracing/coresight/Kconfig
+@@ -100,7 +100,6 @@ config CORESIGHT_SOURCE_ETM4X
+ 	tristate "CoreSight ETMv4.x / ETE driver"
+ 	depends on ARM64
+ 	select CORESIGHT_LINKS_AND_SINKS
+-	select PID_IN_CONTEXTIDR
+ 	help
+ 	  This driver provides support for the CoreSight Embedded Trace Macrocell
+ 	  version 4.x and the Embedded Trace Extensions (ETE). Both are CPU tracer
+diff --git a/src/drivers/hwtracing/coresight/coresight-etm4x-core.c b/src/drivers/hwtracing/coresight/coresight-etm4x-core.c
+index 000000000003..000000000004 100644
+--- a/src/drivers/hwtracing/coresight/coresight-etm4x-core.c
++++ b/src/drivers/hwtracing/coresight/coresight-etm4x-core.c
+@@ -2460,3 +2460,4 @@ MODULE_AUTHOR("Mathieu Poirier <mathieu.poirier@linaro.org>");
+ MODULE_DESCRIPTION("Arm CoreSight Program Flow Trace v4.x driver");
+ MODULE_LICENSE("GPL v2");
++MODULE_SOFTDEP("pre: trilin_dpsub lxlondp");
+--
+2.47.1

@@ -3,3 +3,4 @@ linux/0002-feat-Radxa-custom-kernel-config.patch
 linux/0003-feat-enable-kvm-vsock.patch
 linux/0004-feat-enable-coresight-support.patch
 linux/0005-feat-enable-coresight-dts-support.patch
+linux/0006-fix-coresight-display-boot-conflict.patch
