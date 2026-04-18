@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: dann2333 <dann2333@users.noreply.github.com>
+Date: Sun, 19 Apr 2026 00:00:00 +0000
+Subject: [PATCH] fix: initialize edp_panel to NULL in trilin_dp_probe
+
+trilin_dp_probe() declares `struct drm_panel *edp_panel;` without an
+initializer.  It is only assigned inside the `if (!IS_ERR_OR_NULL(
+fwnode_edp_panel))` branch, but `dp->edp_panel = edp_panel;` runs
+unconditionally afterwards.
+
+On Orion O6 the kernel boots via ACPI (UEFI loads no DTB), and the ACPI
+tables do not expose an "edp-panel" device property.
+fwnode_find_reference() therefore returns -ENOENT, the if-branch is
+skipped, and `dp->edp_panel` is set to whatever uninitialized stack
+slot held — typically string-shaped data left over from an earlier
+function frame (e.g. 0xffff0a600031303a).
+
+Later in trilin_dp_host_init() the test `if (dp->edp_panel)` passes
+because the value is non-zero, drm_panel_prepare() is called with the
+garbage pointer, and dev_warn(panel->dev, ...) inside drm_panel_prepare
+faults on a level-2 translation, panicking the kernel.
+
+The crash is timing-dependent because the stack slot's content varies
+with KASLR seed and module load order.  Builds with CoreSight enabled
+hit the bad value reliably; builds without it usually got a value that
+happened to be zero or unmapped, masking the bug.
+
+Initialize edp_panel to NULL at declaration so the unconditional
+assignment is safe and the existing `if (dp->edp_panel)` guards behave
+as intended on platforms (ACPI or DT) that do not provide an eDP panel.
+
+This is a strict bug fix: no struct layout, ABI, or behavior change for
+boards that DO have an edp-panel reference.  Out-of-tree display
+modules are unaffected — their visible state of dp->edp_panel was
+always meant to be NULL when no panel is wired up.
+
+---
+ src/drivers/gpu/drm/cix/dptx/trilin_dptx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c b/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
+--- a/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
++++ b/src/drivers/gpu/drm/cix/dptx/trilin_dptx.c
+@@ -3252,7 +3252,7 @@ int trilin_dp_probe(struct trilin_dpsub *dpsub, struct drm_device *drm)
+ 	struct resource *res_dp, *res_phy, *res_rcsu = NULL;
+ 	struct device *dev;
+ 	struct fwnode_handle *fwnode_edp_panel;
+-	struct drm_panel *edp_panel;
++	struct drm_panel *edp_panel = NULL;
+ 	int ret;
+ 	const char *str_prop;
+ 	u32 is_insmod = 0;
+--
+2.47.1
