@@ -21,9 +21,23 @@ Provides: linux-image,
           cix-csidma-driver,
 Depends: radxa-overlays-dkms,
          linux-image-${binary:Version}-sky1,
+         sky1-coresight-acpi,
          ${misc:Depends},
 Description: Radxa Linux meta-package for Orion O6
  This is the meta-package for Linux kernel.
+
+Package: sky1-coresight-acpi
+Architecture: all
+Section: kernel
+Priority: optional
+Depends: cpio,
+         initramfs-tools,
+         ${misc:Depends},
+Description: CoreSight SSDT prepended to initramfs for CIX SKY1 (Orion O6)
+ Ships an ACPI SSDT (coresight.aml) that declares ETE/funnel/TMC nodes
+ missing from the firmware ACPI tables, plus a /etc/initramfs/post-update.d
+ hook that prepends a CPIO override to each new initrd image so the kernel
+ picks it up via CONFIG_ACPI_TABLE_UPGRADE before acpi_init().
 
 Package: linux-headers-orion-o6
 Architecture: all

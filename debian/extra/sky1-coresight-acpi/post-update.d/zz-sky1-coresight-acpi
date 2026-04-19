@@ -1,0 +1,35 @@
+#!/bin/sh
+# Prepend a CPIO archive containing the CoreSight SSDT to the new initrd
+# so the kernel's CONFIG_ACPI_TABLE_UPGRADE picks it up before acpi_init().
+#
+# Invoked by update-initramfs(8) after a new initrd has been written.
+# Args: $1 = kernel version, $2 = path to the new initrd image.
+
+set -eu
+
+VERSION="${1:-}"
+INITRD="${2:-}"
+
+[ -n "$INITRD" ] && [ -f "$INITRD" ] || exit 0
+
+AML=/usr/lib/sky1-coresight/coresight.aml
+[ -f "$AML" ] || exit 0
+
+# Idempotency: skip if the override is already prepended.
+if head -c 4096 "$INITRD" 2>/dev/null | grep -q 'coresight\.aml'; then
+    exit 0
+fi
+
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+mkdir -p "$TMP/kernel/firmware/acpi"
+cp "$AML" "$TMP/kernel/firmware/acpi/coresight.aml"
+
+(cd "$TMP" && find kernel -print0 | LC_ALL=C sort -z | \
+    cpio --null -H newc --create --quiet > override.cpio)
+
+cat "$TMP/override.cpio" "$INITRD" > "$INITRD.sky1cs.new"
+mv "$INITRD.sky1cs.new" "$INITRD"
+
+echo "sky1-coresight-acpi: prepended SSDT override to $INITRD (kver=$VERSION)"

@@ -1,0 +1,2 @@
+debian/extra/sky1-coresight-acpi/coresight.aml usr/lib/sky1-coresight/
+debian/extra/sky1-coresight-acpi/post-update.d/zz-sky1-coresight-acpi etc/initramfs/post-update.d/
