@@ -1,0 +1,161 @@
+From: Radxa Sky1 <linux-sky1@radxa.com>
+Date: Sun, 19 Apr 2026 00:00:00 +0000
+Subject: [PATCH] coresight: tmc: add ACPI/platform_device bind path
+
+Backport of upstream pattern: split TMC probe so the existing AMBA path
+stays untouched and an additional platform_driver carrying
+acpi_match_table {ARMHC501, ARMHC97C} binds when the device is
+enumerated from ACPI.
+
+Needed on Orion O6 where firmware DSDT exposes no CoreSight devices and
+the SSDT installed by sky1-coresight only declares ACPI0007 + ETE
+children; the TMC sinks must bind on ACPI for trace data to have a
+destination.
+
+Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
+---
+--- a/src/drivers/hwtracing/coresight/coresight-tmc-core.c
++++ b/src/drivers/hwtracing/coresight/coresight-tmc-core.c
+@@ -19,7 +19,10 @@
+ #include <linux/slab.h>
+ #include <linux/dma-mapping.h>
+ #include <linux/spinlock.h>
++#include <linux/acpi.h>
++#include <linux/clk.h>
+ #include <linux/pm_runtime.h>
++#include <linux/platform_device.h>
+ #include <linux/of.h>
+ #include <linux/coresight.h>
+ #include <linux/amba/bus.h>
+@@ -429,15 +432,14 @@
+ 	return burst_size;
+ }
+ 
+-static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
++static int __tmc_probe(struct device *dev, struct resource *res,
++		       void *etr_caps)
+ {
+ 	int ret = 0;
+ 	u32 devid;
+ 	void __iomem *base;
+-	struct device *dev = &adev->dev;
+ 	struct coresight_platform_data *pdata = NULL;
+ 	struct tmc_drvdata *drvdata;
+-	struct resource *res = &adev->res;
+ 	struct coresight_desc desc = { 0 };
+ 	struct coresight_dev_list *dev_list = NULL;
+ 
+@@ -448,7 +450,6 @@
+ 
+ 	dev_set_drvdata(dev, drvdata);
+ 
+-	/* Validity for the resource is already checked by the AMBA core */
+ 	base = devm_ioremap_resource(dev, res);
+ 	if (IS_ERR(base)) {
+ 		ret = PTR_ERR(base);
+@@ -487,8 +488,7 @@
+ 		desc.type = CORESIGHT_DEV_TYPE_SINK;
+ 		desc.subtype.sink_subtype = CORESIGHT_DEV_SUBTYPE_SINK_SYSMEM;
+ 		desc.ops = &tmc_etr_cs_ops;
+-		ret = tmc_etr_setup_caps(dev, devid,
+-					 coresight_get_uci_data(id));
++		ret = tmc_etr_setup_caps(dev, devid, etr_caps);
+ 		if (ret)
+ 			goto out;
+ 		idr_init(&drvdata->idr);
+@@ -519,7 +519,7 @@
+ 		ret = PTR_ERR(pdata);
+ 		goto out;
+ 	}
+-	adev->dev.platform_data = pdata;
++	dev->platform_data = pdata;
+ 	desc.pdata = pdata;
+ 
+ 	drvdata->csdev = coresight_register(&desc);
+@@ -534,12 +534,19 @@
+ 	ret = misc_register(&drvdata->miscdev);
+ 	if (ret)
+ 		coresight_unregister(drvdata->csdev);
+-	else
+-		pm_runtime_put(&adev->dev);
+ out:
+ 	return ret;
+ }
+ 
++static int tmc_probe(struct amba_device *adev, const struct amba_id *id)
++{
++	int ret = __tmc_probe(&adev->dev, &adev->res,
++			      coresight_get_uci_data(id));
++	if (!ret)
++		pm_runtime_put(&adev->dev);
++	return ret;
++}
++
+ static void tmc_shutdown(struct amba_device *adev)
+ {
+ 	unsigned long flags;
+@@ -602,6 +609,64 @@
+ 
+ module_amba_driver(tmc_driver);
+ 
++#ifdef CONFIG_ACPI
++static const struct acpi_device_id tmc_acpi_ids[] = {
++	{ "ARMHC501", 0 }, /* CoreSight TMC-ETR */
++	{ "ARMHC97C", 0 }, /* CoreSight TMC-ETB / SoC-600 ETF */
++	{ }
++};
++MODULE_DEVICE_TABLE(acpi, tmc_acpi_ids);
++
++static int tmc_platform_probe(struct platform_device *pdev)
++{
++	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	int ret;
++
++	if (!res)
++		return -ENODEV;
++
++	pm_runtime_get_noresume(&pdev->dev);
++	pm_runtime_set_active(&pdev->dev);
++	pm_runtime_enable(&pdev->dev);
++
++	ret = __tmc_probe(&pdev->dev, res, NULL);
++	pm_runtime_put(&pdev->dev);
++	if (ret)
++		pm_runtime_disable(&pdev->dev);
++
++	return ret;
++}
++
++static int tmc_platform_remove(struct platform_device *pdev)
++{
++	struct tmc_drvdata *drvdata = dev_get_drvdata(&pdev->dev);
++
++	if (!drvdata)
++		return 0;
++
++	misc_deregister(&drvdata->miscdev);
++	coresight_unregister(drvdata->csdev);
++	pm_runtime_disable(&pdev->dev);
++	return 0;
++}
++
++static struct platform_driver tmc_platform_driver = {
++	.probe	= tmc_platform_probe,
++	.remove	= tmc_platform_remove,
++	.driver	= {
++		.name			= "coresight-tmc-platform",
++		.acpi_match_table	= ACPI_PTR(tmc_acpi_ids),
++		.suppress_bind_attrs	= true,
++	},
++};
++
++static int __init tmc_acpi_init(void)
++{
++	return platform_driver_register(&tmc_platform_driver);
++}
++device_initcall(tmc_acpi_init);
++#endif
++
+ MODULE_AUTHOR("Pratik Patel <pratikp@codeaurora.org>");
+ MODULE_DESCRIPTION("Arm CoreSight Trace Memory Controller driver");
+ MODULE_LICENSE("GPL v2");

@@ -1,0 +1,97 @@
+From: Radxa Sky1 <linux-sky1@radxa.com>
+Date: Sun, 19 Apr 2026 00:00:00 +0000
+Subject: [PATCH] coresight: dynamic funnel: add ACPI/platform_device bind path
+
+Adds a platform_driver wrapper around the existing funnel_probe(dev, res)
+helper, with acpi_match_table {ARMHC9FF}, so the SoC dynamic funnel at
+0x180B0000 binds when enumerated via ACPI on Orion O6.
+
+The existing AMBA dynamic_funnel_driver is left intact for DT-based
+boards.
+
+Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
+---
+--- a/src/drivers/hwtracing/coresight/coresight-funnel.c
++++ b/src/drivers/hwtracing/coresight/coresight-funnel.c
+@@ -42,6 +42,7 @@
+  */
+ struct funnel_drvdata {
+ 	void __iomem		*base;
++	bool dummy;
+ 	struct clk		*atclk;
+ 	struct coresight_device	*csdev;
+ 	unsigned long		priority;
+@@ -236,11 +237,13 @@
+ 			return ret;
+ 	}
+ 
++	drvdata->dummy = of_property_read_bool(dev->of_node, "dummy_funnel");
++
+ 	/*
+ 	 * Map the device base for dynamic-funnel, which has been
+ 	 * validated by AMBA core.
+ 	 */
+-	if (res) {
++	if (!drvdata->dummy && res) {
+ 		base = devm_ioremap_resource(dev, res);
+ 		if (IS_ERR(base)) {
+ 			ret = PTR_ERR(base);
+@@ -437,6 +440,58 @@
+ module_init(funnel_init);
+ module_exit(funnel_exit);
+ 
++#ifdef CONFIG_ACPI
++static int dynamic_funnel_platform_probe(struct platform_device *pdev)
++{
++	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
++	int ret;
++
++	if (!res)
++		return -ENODEV;
++
++	pm_runtime_get_noresume(&pdev->dev);
++	pm_runtime_set_active(&pdev->dev);
++	pm_runtime_enable(&pdev->dev);
++
++	ret = funnel_probe(&pdev->dev, res);
++	if (ret) {
++		pm_runtime_put_noidle(&pdev->dev);
++		pm_runtime_disable(&pdev->dev);
++	}
++	return ret;
++}
++
++static int dynamic_funnel_platform_remove(struct platform_device *pdev)
++{
++	funnel_remove(&pdev->dev);
++	pm_runtime_disable(&pdev->dev);
++	return 0;
++}
++
++static const struct acpi_device_id dynamic_funnel_acpi_ids[] = {
++	{ "ARMHC9FF", 0 }, /* CoreSight dynamic funnel */
++	{ }
++};
++MODULE_DEVICE_TABLE(acpi, dynamic_funnel_acpi_ids);
++
++static struct platform_driver dynamic_funnel_platform_driver = {
++	.probe	= dynamic_funnel_platform_probe,
++	.remove	= dynamic_funnel_platform_remove,
++	.driver	= {
++		.name			= "coresight-dynamic-funnel-platform",
++		.acpi_match_table	= dynamic_funnel_acpi_ids,
++		.pm			= &funnel_dev_pm_ops,
++		.suppress_bind_attrs	= true,
++	},
++};
++
++static int __init dynamic_funnel_acpi_init(void)
++{
++	return platform_driver_register(&dynamic_funnel_platform_driver);
++}
++device_initcall(dynamic_funnel_acpi_init);
++#endif
++
+ MODULE_AUTHOR("Pratik Patel <pratikp@codeaurora.org>");
+ MODULE_AUTHOR("Mathieu Poirier <mathieu.poirier@linaro.org>");
+ MODULE_DESCRIPTION("Arm CoreSight Funnel Driver");
