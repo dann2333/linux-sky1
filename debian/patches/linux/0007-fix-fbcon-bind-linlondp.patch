@@ -1,0 +1,31 @@
+From: Radxa Sky1 <linux-sky1@radxa.com>
+Date: Sun, 19 Apr 2026 00:00:00 +0000
+Subject: [PATCH] fix: bind fbcon to linlondp framebuffer instead of EFI VGA
+
+On Orion O6, UEFI hands off a 1920x1080 simplefb at 0x84800000 which
+the kernel registers as fb0 via efifb. Once linlondp probes (~+1s) it
+creates fb1 backed by the real DP controller and drives the actual
+monitor (e.g. 2560x1440 on DP04). However fbcon stays bound to fb0,
+so the console writes go to the obsolete EFI scanout buffer that no
+longer reaches any physical display, leaving the monitor blank even
+though the DP link is trained.
+
+Disable the EFI framebuffer driver so linlondp becomes fb0 and fbcon
+binds to it automatically. Loss: no kernel boot messages on the
+monitor before linlondp probes (~1s) - serial console (UART2) and
+dmesg still capture everything.
+
+Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
+---
+ src/arch/arm64/configs/defconfig | 1 -
+ 1 file changed, 1 deletion(-)
+
+--- a/src/arch/arm64/configs/defconfig
++++ b/src/arch/arm64/configs/defconfig
+@@ -879,6 +879,5 @@ CONFIG_DRM_TIDSS=m
+ CONFIG_FB=y
+ CONFIG_FB_MODE_HELPERS=y
+-CONFIG_FB_EFI=y
+ CONFIG_BACKLIGHT_PWM=m
+ CONFIG_BACKLIGHT_LP855X=m
+ CONFIG_LOGO=y
