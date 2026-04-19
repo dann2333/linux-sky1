@@ -13,30 +13,7 @@ Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
 ---
 --- a/src/drivers/hwtracing/coresight/coresight-funnel.c
 +++ b/src/drivers/hwtracing/coresight/coresight-funnel.c
-@@ -42,6 +42,7 @@
-  */
- struct funnel_drvdata {
- 	void __iomem		*base;
-+	bool dummy;
- 	struct clk		*atclk;
- 	struct coresight_device	*csdev;
- 	unsigned long		priority;
-@@ -236,11 +237,13 @@
- 			return ret;
- 	}
- 
-+	drvdata->dummy = of_property_read_bool(dev->of_node, "dummy_funnel");
-+
- 	/*
- 	 * Map the device base for dynamic-funnel, which has been
- 	 * validated by AMBA core.
- 	 */
--	if (res) {
-+	if (!drvdata->dummy && res) {
- 		base = devm_ioremap_resource(dev, res);
- 		if (IS_ERR(base)) {
- 			ret = PTR_ERR(base);
-@@ -437,6 +440,58 @@
+@@ -440,6 +440,58 @@ static struct amba_driver dynamic_funnel_driver = {
  module_init(funnel_init);
  module_exit(funnel_exit);
  
