@@ -24,8 +24,8 @@ need separate ACPI backports.
 Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
 ---
  src/drivers/acpi/Makefile         |   2 +
- src/drivers/acpi/sky1-coresight.c | 179 ++++++++++++++++++++++++++++++++
- 2 files changed, 181 insertions(+)
+ src/drivers/acpi/sky1-coresight.c | 184 ++++++++++++++++++++++++++++++++
+ 2 files changed, 186 insertions(+)
  create mode 100644 src/drivers/acpi/sky1-coresight.c
 
 --- a/src/drivers/acpi/Makefile
@@ -37,7 +37,7 @@ Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
 +obj-$(CONFIG_ARCH_CIX)		+= sky1-coresight.o
 --- /dev/null
 +++ b/src/drivers/acpi/sky1-coresight.c
-@@ -0,0 +1,179 @@
+@@ -0,0 +1,184 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * sky1-coresight: install a CoreSight SSDT at boot on CIX SKY1.
@@ -202,18 +202,23 @@ Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
 +static int __init sky1_cs_ssdt_init(void)
 +{
 +	acpi_status status;
++	int ret;
++
++	pr_emerg("sky1-coresight: PROBE A enter init, aml=%zu bytes\n",
++		 sizeof(sky1_cs_ssdt_aml));
 +
 +	status = acpi_load_table((struct acpi_table_header *)sky1_cs_ssdt_aml,
 +				 &sky1_cs_ssdt_index);
-+	if (ACPI_FAILURE(status)) {
-+		pr_err("sky1-coresight: acpi_load_table failed: 0x%x\n",
-+		       status);
++	pr_emerg("sky1-coresight: PROBE B acpi_load_table -> 0x%x idx=%u\n",
++		 status, sky1_cs_ssdt_index);
++	if (ACPI_FAILURE(status))
 +		return -ENODEV;
-+	}
 +
-+	acpi_bus_scan(ACPI_ROOT_OBJECT);
-+	pr_info("sky1-coresight: SSDT installed (index %u)\n",
-+		sky1_cs_ssdt_index);
++	pr_emerg("sky1-coresight: PROBE C before acpi_bus_scan(ROOT)\n");
++	ret = acpi_bus_scan(ACPI_ROOT_OBJECT);
++	pr_emerg("sky1-coresight: PROBE D after acpi_bus_scan -> %d\n", ret);
++
++	pr_emerg("sky1-coresight: PROBE E init done\n");
 +	return 0;
 +}
 +device_initcall(sky1_cs_ssdt_init);
