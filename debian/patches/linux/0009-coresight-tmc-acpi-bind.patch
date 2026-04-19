@@ -7,6 +7,11 @@ stays untouched and an additional platform_driver carrying
 acpi_match_table {ARMHC501, ARMHC97C} binds when the device is
 enumerated from ACPI.
 
+Replace module_amba_driver() with explicit module_init/module_exit so
+both the AMBA driver and the new platform_driver are registered from
+the same module init (needed because device_initcall() expands to
+module_init() in modular builds and would collide with the macro).
+
 Needed on Orion O6 where firmware DSDT exposes no CoreSight devices and
 the SSDT installed by sky1-coresight only declares ACPI0007 + ETE
 children; the TMC sinks must bind on ACPI for trace data to have a
@@ -94,10 +99,11 @@ Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
  static void tmc_shutdown(struct amba_device *adev)
  {
  	unsigned long flags;
-@@ -602,6 +609,64 @@
+@@ -600,7 +607,81 @@
+ 	.id_table	= tmc_ids,
+ };
  
- module_amba_driver(tmc_driver);
- 
+-module_amba_driver(tmc_driver);
 +#ifdef CONFIG_ACPI
 +static const struct acpi_device_id tmc_acpi_ids[] = {
 +	{ "ARMHC501", 0 }, /* CoreSight TMC-ETR */
@@ -148,14 +154,31 @@ Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
 +		.suppress_bind_attrs	= true,
 +	},
 +};
-+
-+static int __init tmc_acpi_init(void)
-+{
-+	return platform_driver_register(&tmc_platform_driver);
-+}
-+device_initcall(tmc_acpi_init);
 +#endif
 +
++static int __init tmc_init(void)
++{
++	int ret = amba_driver_register(&tmc_driver);
++
++	if (ret)
++		return ret;
++#ifdef CONFIG_ACPI
++	ret = platform_driver_register(&tmc_platform_driver);
++	if (ret)
++		amba_driver_unregister(&tmc_driver);
++#endif
++	return ret;
++}
++module_init(tmc_init);
++
++static void __exit tmc_exit(void)
++{
++#ifdef CONFIG_ACPI
++	platform_driver_unregister(&tmc_platform_driver);
++#endif
++	amba_driver_unregister(&tmc_driver);
++}
++module_exit(tmc_exit);
+ 
  MODULE_AUTHOR("Pratik Patel <pratikp@codeaurora.org>");
  MODULE_DESCRIPTION("Arm CoreSight Trace Memory Controller driver");
- MODULE_LICENSE("GPL v2");
