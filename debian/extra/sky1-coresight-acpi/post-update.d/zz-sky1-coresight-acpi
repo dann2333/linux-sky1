@@ -15,21 +15,26 @@ INITRD="${2:-}"
 AML=/usr/lib/sky1-coresight/coresight.aml
 [ -f "$AML" ] || exit 0
 
-# Idempotency: skip if the override is already prepended.
-if head -c 4096 "$INITRD" 2>/dev/null | grep -q 'coresight\.aml'; then
-    exit 0
-fi
+# RadxaOS embloader actually reads from /boot/efi/RadxaOS/<kver>/initrd.img-<kver>.
+# Update both copies so whichever the bootloader picks has the override.
+EFI_INITRD="/boot/efi/RadxaOS/${VERSION}/initrd.img-${VERSION}"
 
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
+prepend_override() {
+    target="$1"
+    [ -f "$target" ] || return 0
+    if head -c 4096 "$target" 2>/dev/null | grep -q 'coresight\.aml'; then
+        return 0
+    fi
+    tmp=$(mktemp -d)
+    mkdir -p "$tmp/kernel/firmware/acpi"
+    cp "$AML" "$tmp/kernel/firmware/acpi/coresight.aml"
+    (cd "$tmp" && find kernel -print0 | LC_ALL=C sort -z | \
+        cpio --null -H newc --create --quiet > override.cpio)
+    cat "$tmp/override.cpio" "$target" > "$target.sky1cs.new"
+    mv "$target.sky1cs.new" "$target"
+    rm -rf "$tmp"
+    echo "sky1-coresight-acpi: prepended SSDT override to $target"
+}
 
-mkdir -p "$TMP/kernel/firmware/acpi"
-cp "$AML" "$TMP/kernel/firmware/acpi/coresight.aml"
-
-(cd "$TMP" && find kernel -print0 | LC_ALL=C sort -z | \
-    cpio --null -H newc --create --quiet > override.cpio)
-
-cat "$TMP/override.cpio" "$INITRD" > "$INITRD.sky1cs.new"
-mv "$INITRD.sky1cs.new" "$INITRD"
-
-echo "sky1-coresight-acpi: prepended SSDT override to $INITRD (kver=$VERSION)"
+prepend_override "$INITRD"
+[ -n "$VERSION" ] && prepend_override "$EFI_INITRD"
