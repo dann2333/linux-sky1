@@ -1,0 +1,78 @@
+From: Radxa Sky1 <linux-sky1@radxa.com>
+Date: Mon, 20 Apr 2026 00:00:00 +0000
+Subject: [PATCH] acpi: scan: pr_emerg every device path during bus_attach
+
+Temporary instrumentation: log entry/exit of acpi_bus_attach() for every
+ACPI device with full namespace path. acpi_init() walks the namespace
+serially; if attach for one device never returns, the previous "ENTER"
+line names it precisely. Used to localize an SKY1 boot hang that
+happens between the last matched-driver probe and acpi_init returning.
+
+Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
+---
+--- a/src/drivers/acpi/scan.c
++++ b/src/drivers/acpi/scan.c
+@@ -2185,6 +2185,13 @@ static int acpi_bus_attach(struct acpi_device *device, void *first_pass)
+ 	bool skip = !first_pass && device->flags.visited;
+ 	acpi_handle ejd;
+ 	int ret;
++	struct acpi_buffer __pbuf = { ACPI_ALLOCATE_BUFFER, NULL };
++	const char *__path = "?";
++
++	if (ACPI_SUCCESS(acpi_get_name(device->handle, ACPI_FULL_PATHNAME, &__pbuf)))
++		__path = __pbuf.pointer;
++	pr_emerg("sky1-cs: bus_attach ENTER %s skip=%d first=%d\n",
++		 __path, skip, first_pass ? 1 : 0);
+
+ 	if (skip)
+ 		goto ok;
+@@ -2199,6 +2206,8 @@ static int acpi_bus_attach(struct acpi_device *device, void *first_pass)
+ 		device->flags.initialized = false;
+ 		acpi_device_clear_enumerated(device);
+ 		device->flags.power_manageable = 0;
++		pr_emerg("sky1-cs: bus_attach EXIT  %s (not ready)\n", __path);
++		kfree(__pbuf.pointer);
+ 		return 0;
+ 	}
+ 	if (device->handler)
+@@ -2218,8 +2227,11 @@ static int acpi_bus_attach(struct acpi_device *device, void *first_pass)
+ 	}
+
+ 	ret = acpi_scan_attach_handler(device);
+-	if (ret < 0)
++	if (ret < 0) {
++		pr_emerg("sky1-cs: bus_attach EXIT  %s (handler<0)\n", __path);
++		kfree(__pbuf.pointer);
+ 		return 0;
++	}
+
+ 	device->flags.match_driver = true;
+ 	if (ret > 0 && !device->flags.enumeration_by_parent) {
+@@ -2228,8 +2240,11 @@ static int acpi_bus_attach(struct acpi_device *device, void *first_pass)
+ 	}
+
+ 	ret = device_attach(&device->dev);
+-	if (ret < 0)
++	if (ret < 0) {
++		pr_emerg("sky1-cs: bus_attach EXIT  %s (dev_attach<0)\n", __path);
++		kfree(__pbuf.pointer);
+ 		return 0;
++	}
+
+ 	if (device->pnp.type.platform_id || device->flags.enumeration_by_parent)
+ 		acpi_default_enumeration(device);
+@@ -2237,11 +2252,14 @@ static int acpi_bus_attach(struct acpi_device *device, void *first_pass)
+ 		acpi_device_set_enumerated(device);
+
+ ok:
++	pr_emerg("sky1-cs: bus_attach RECUR %s\n", __path);
+ 	acpi_dev_for_each_child(device, acpi_bus_attach, first_pass);
++	pr_emerg("sky1-cs: bus_attach EXIT  %s (ok)\n", __path);
+
+ 	if (!skip && device->handler && device->handler->hotplug.notify_online)
+ 		device->handler->hotplug.notify_online(device);
+
++	kfree(__pbuf.pointer);
+ 	return 0;
+ }
+
