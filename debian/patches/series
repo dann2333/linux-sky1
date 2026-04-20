@@ -7,5 +7,4 @@ linux/0006-fix-trilin-dp-uninit-edp-panel.patch
 linux/0007-fix-fbcon-bind-linlondp.patch
 linux/0009-coresight-tmc-acpi-bind.patch
 linux/0010-coresight-funnel-acpi-bind.patch
-linux/0011-coresight-acpi-probe-prints.patch
 linux/0012-acpi-scan-bus-attach-prints.patch
