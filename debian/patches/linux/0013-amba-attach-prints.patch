@@ -1,0 +1,47 @@
+From: Radxa Sky1 <linux-sky1@radxa.com>
+Date: Mon, 21 Apr 2026 00:00:00 +0000
+Subject: [PATCH] acpi: arm64: amba: pr_emerg around handler_attach steps
+
+Temporary instrumentation: log entry/exit and key steps inside
+amba_handler_attach() so we can pinpoint whether the SKY1 sink hang
+is in acpi_dev_get_resources, in dev->res copy, or in
+amba_device_add() (which ioremaps and reads PrimeCell PID/CID
+registers from MMIO, the most likely stall on an unpowered block).
+
+Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
+---
+--- a/src/drivers/acpi/arm64/amba.c
++++ b/src/drivers/acpi/arm64/amba.c
+@@ -56,6 +56,9 @@
+ 	int irq_no = 0;
+ 	int ret;
+
++	pr_emerg("sky1-cs: amba_attach ENTER %s hid=%s\n",
++		 dev_name(&adev->dev), id ? id->id : "?");
++
+ 	/* If the ACPI node already has a physical device attached, skip it. */
+ 	if (adev->physical_node_count)
+ 		return 0;
+@@ -68,7 +71,10 @@
+ 	}
+
+ 	INIT_LIST_HEAD(&resource_list);
++	pr_emerg("sky1-cs: amba_attach %s before-get_resources\n", dev_name(&adev->dev));
+ 	ret = acpi_dev_get_resources(adev, &resource_list, NULL, NULL);
++	pr_emerg("sky1-cs: amba_attach %s after-get_resources ret=%d\n",
++		 dev_name(&adev->dev), ret);
+ 	if (ret < 0)
+ 		goto err_free;
+
+@@ -103,7 +109,11 @@
+
+ 	ACPI_COMPANION_SET(&dev->dev, adev);
+
++	pr_emerg("sky1-cs: amba_attach %s before-amba_device_add res=%pR\n",
++		 dev_name(&adev->dev), &dev->res);
+ 	ret = amba_device_add(dev, &iomem_resource);
++	pr_emerg("sky1-cs: amba_attach %s after-amba_device_add ret=%d\n",
++		 dev_name(&adev->dev), ret);
+ 	if (ret) {
+ 		dev_err(&adev->dev, "%s(): amba_device_add() failed (%d)\n",
+ 		       __func__, ret);
