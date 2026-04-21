@@ -7,3 +7,4 @@ linux/0006-fix-trilin-dp-uninit-edp-panel.patch
 linux/0007-fix-fbcon-bind-linlondp.patch
 linux/0012-acpi-scan-bus-attach-prints.patch
 linux/0013-amba-attach-prints.patch
+linux/0014-acpi-amba-skip-coresight-sinks-on-sky1.patch

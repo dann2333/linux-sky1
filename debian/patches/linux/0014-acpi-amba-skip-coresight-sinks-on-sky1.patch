@@ -1,0 +1,41 @@
+From: Radxa Sky1 <linux-sky1@radxa.com>
+Date: Mon, 21 Apr 2026 00:00:00 +0000
+Subject: [PATCH] acpi: arm64: amba: skip CoreSight sink HIDs on SKY1
+
+ARMHC501 (ETR), ARMHC97C (TMC-ETF) and ARMHC9FF (dynamic funnel) MMIO
+blocks are power/clock-gated on CIX SKY1 at boot. The AMBA scan
+handler's amba_device_add() ioremaps the device and reads the
+PrimeCell PID/CID registers at offsets 0xFE0..0xFFC; the bus
+transaction never completes and the CPU stalls (acpi_init hangs, no
+SError).
+
+Drop these three HIDs from amba_id_list so matching devices fall
+through to the default ACPI platform_device path. A future
+coresight-acpi platform driver will do power/clock bring-up before
+touching MMIO.
+
+Signed-off-by: Radxa Sky1 <linux-sky1@radxa.com>
+---
+--- a/src/drivers/acpi/arm64/amba.c
++++ b/src/drivers/acpi/arm64/amba.c
+@@ -22,14 +22,17 @@
+ static const struct acpi_device_id amba_id_list[] = {
+ 	{"ARMH0061", 0}, /* PL061 GPIO Device */
+ 	{"ARMH0330", 0}, /* ARM DMA Controller DMA-330 */
+-	{"ARMHC501", 0}, /* ARM CoreSight ETR */
++	/*
++	 * SKY1: ARMHC501 (ETR), ARMHC97C (TMC-ETF), ARMHC9FF (dynamic
++	 * funnel) MMIO blocks are gated on this SoC at boot; the PID/CID
++	 * readback inside amba_device_add() stalls the bus. Handled by a
++	 * coresight-specific platform driver instead.
++	 */
+ 	{"ARMHC502", 0}, /* ARM CoreSight STM */
+ 	{"ARMHC503", 0}, /* ARM CoreSight Debug */
+ 	{"ARMHC979", 0}, /* ARM CoreSight TPIU */
+-	{"ARMHC97C", 0}, /* ARM CoreSight SoC-400 TMC, SoC-600 ETF/ETB */
+ 	{"ARMHC98D", 0}, /* ARM CoreSight Dynamic Replicator */
+ 	{"ARMHC9CA", 0}, /* ARM CoreSight CATU */
+-	{"ARMHC9FF", 0}, /* ARM CoreSight Dynamic Funnel */
+ 	{"", 0},
+ };
+
